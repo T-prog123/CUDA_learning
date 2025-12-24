@@ -85,4 +85,6 @@ int main(int argc, char** argv)
     delete[] h_A;
     delete[] h_B;
     delete[] h_C;
+
+    
 }
