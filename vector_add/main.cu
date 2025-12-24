@@ -2,8 +2,21 @@
 #include <iostream>
 #include <chrono>
 #include <cstdlib>
+#include <cstdio>
 using namespace std;
 using namespace std::chrono;
+
+//Cuda check for gpu api calls
+#define CUDA_CHECK(call) do {                                \
+    cudaError_t err__ = (call);                              \
+    if (err__ != cudaSuccess) {                              \
+        fprintf(stderr, "CUDA error %s:%d: %s\n",            \
+                __FILE__, __LINE__, cudaGetErrorString(err__)); \
+        exit(1);                                             \
+    }                                                        \
+} while(0)
+
+
 
 // Kernel definition
 __global__ void VecAdd(float* A, float* B, float* C)
@@ -20,20 +33,21 @@ void add_vector_device(const float* h_A, const float *h_B, float *h_C, int N){
 
     size_t size =  N * sizeof(float);
 
-    cudaMalloc(&d_A, size);
-    cudaMalloc(&d_B, size);
-    cudaMalloc(&d_C, size);
+    CUDA_CHECK(cudaMalloc(&d_A, size));
+    CUDA_CHECK(cudaMalloc(&d_B, size));
+    CUDA_CHECK(cudaMalloc(&d_C, size));
 
-    cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice));
 
     VecAdd<<<1,N>>> (d_A, d_B, d_C);
+    CUDA_CHECK(cudaGetLastError());
 
-    cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost));
 
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+    CUDA_CHECK(cudaFree(d_A));
+    CUDA_CHECK(cudaFree(d_B));
+    CUDA_CHECK(cudaFree(d_C));
 
 }
 
