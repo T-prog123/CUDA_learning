@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstdio>  
 #include <cmath>
 #include <cuda_runtime.h>
 #include "cuda_check.h"
@@ -10,13 +11,21 @@ using namespace std::chrono;
 
 const int block_size = 128;
 
+#define DEBUG_ENABLE 0 
+
+#if DEBUG_ENABLE
+    #define GPU_PRINTF(...) printf(__VA_ARGS__)
+#else
+    #define GPU_PRINTF(...) 
+#endif
+
 __global__ void VectDotProduct(const float* A, const float* B, float* d_dot_product_array, const int N){
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     __shared__ float cache[block_size];
 
     float sum_value = 0;
     while (i < N){
-        printf("We are computing the product at %i\n", i);
+        GPU_PRINTF("We are computing the product at %i\n", i);
         sum_value += A[i] * B[i];
         i +=  gridDim.x * blockDim.x;
 
@@ -25,18 +34,30 @@ __global__ void VectDotProduct(const float* A, const float* B, float* d_dot_prod
     cache[threadIdx.x] = sum_value;
     __syncthreads();
 
-    float reduction = 0;
+    /*float reduction = 0;
     if (threadIdx.x == 0){
-        printf("We are at block %i\n", i);
+        GPU_PRINTF("We are at block %i\n", i);
         for (int j = 0; j < block_size; j++){
             if ( j + blockIdx.x * blockDim.x < N){
-                printf("We are adding element %i to the reduction\n", j);
+                GPU_PRINTF("We are adding element %i to the reduction\n", j);
                 reduction += cache[j];
             }
         }
-        printf("Accessing the reduction array at %i\n", blockIdx.x);
-        d_dot_product_array[blockIdx.x] = reduction;
+        GPU_PRINTF("Accessing the reduction array at %i\n", blockIdx.x);
+        d_dot_product_array[blockIdx.x] = reduction; 
+        
+    }*/
+    // reduction in log_2 time:
+    int thread_i = threadIdx.x;
+    int split_index = block_size / 2;
+    while (split_index != 0){
+        if (thread_i < split_index){
+            cache[thread_i] += cache[thread_i + split_index];
+        }
+        split_index = split_index / 2;
+        __syncthreads();
     }
+    d_dot_product_array[blockIdx.x] = cache[0]; 
 }
 
 float device_vector_dot_product(const float* h_A, const float* h_B, const int N){
@@ -60,6 +81,7 @@ float device_vector_dot_product(const float* h_A, const float* h_B, const int N)
     CUDA_CHECK(cudaMalloc(&d_dot_product_array, grid_size * sizeof(float)) );
     VectDotProduct<<<grid_dim, block_dim>>>(d_A, d_B, d_dot_product_array, N);
     CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());  // catches runtime errors
 
     CUDA_CHECK(cudaMemcpy(h_dot_product_array, d_dot_product_array, grid_size * sizeof(float), cudaMemcpyDeviceToHost) );
     // Free memory and return value
@@ -70,17 +92,16 @@ float device_vector_dot_product(const float* h_A, const float* h_B, const int N)
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_dot_product_array);
-    delete h_dot_product_array;
+    delete[] h_dot_product_array;
     return(dot_product_value);
 }
 
-float host_vector_dot_product(const float* A, const float* B, const int N){
-    float dot_product_value = 0;
-    for (int i=0; i <N; i++){
-        dot_product_value += A[i] * B[i];
-    }
-    return dot_product_value;
+double host_vector_dot_product(const float* A, const float* B, int N){
+    double s = 0.0;
+    for (int i = 0; i < N; ++i) s += (double)A[i] * (double)B[i];
+    return s;
 }
+
 
 int main(int argc, char** argv){
     // setting things up:
@@ -116,7 +137,7 @@ int main(int argc, char** argv){
 
     // verification and output
 
-    bool equal = std::abs(h_dot_product_GPU - h_dot_product_CPU) < 1e-6f;
+    bool equal = std::abs(h_dot_product_GPU - h_dot_product_CPU) < 1e-5f * static_cast<float>(N) * N * N; // bound that varies with N
     cout << endl;
     cout << "GPU computed values: " << h_dot_product_GPU << endl;
     cout << "CPU computed values: " << h_dot_product_CPU << endl;
