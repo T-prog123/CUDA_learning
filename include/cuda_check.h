@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
 
 #define CUDA_CHECK(call)                                                     \
   do {                                                                       \
@@ -17,7 +18,7 @@
 
   void print_array(const float* x, const int N){
     for (int i=0; i<N; i++){
-        cout << x[i] <<" ";
+        std::cout << x[i] <<" ";
     }
-    cout << endl;
+    std::cout << std::endl;
 }
