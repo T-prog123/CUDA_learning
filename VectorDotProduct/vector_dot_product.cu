@@ -16,21 +16,27 @@ __global__ void VectDotProduct(const float* A, const float* B, float* d_dot_prod
 
     float sum_value = 0;
     while (i < N){
+        printf("We are computing the product at %i\n", i);
         sum_value += A[i] * B[i];
         i +=  gridDim.x * blockDim.x;
 
     }
 
-    cache[i] = sum_value;
+    cache[threadIdx.x] = sum_value;
     __syncthreads();
 
     float reduction = 0;
-    if (i % (blockDim.x ) == 0){
+    if (threadIdx.x == 0){
+        printf("We are at block %i\n", i);
         for (int j = 0; j < block_size; j++){
-            reduction += cache[j];
+            if ( j + blockIdx.x * blockDim.x < N){
+                printf("We are adding element %i to the reduction\n", j);
+                reduction += cache[j];
+            }
         }
+        printf("Accessing the reduction array at %i\n", blockIdx.x);
+        d_dot_product_array[blockIdx.x] = reduction;
     }
-    d_dot_product_array[blockIdx.x] = reduction;
 }
 
 float device_vector_dot_product(const float* h_A, const float* h_B, const int N){
@@ -100,17 +106,20 @@ int main(int argc, char** argv){
     auto device_start = high_resolution_clock::now();
     h_dot_product_GPU = device_vector_dot_product(h_A, h_B, N);
     auto device_end = high_resolution_clock::now();
-    auto device_duration = duration_cast<milliseconds>(device_start - device_end);
+    auto device_duration = duration_cast<milliseconds>(device_end - device_start);
 
     // running and timing on host (CPU)
     auto host_start = high_resolution_clock::now();
     h_dot_product_CPU = host_vector_dot_product(h_A, h_B, N);
     auto host_end = high_resolution_clock::now();
-    auto host_duration = duration_cast<milliseconds>(host_start - host_end);
+    auto host_duration = duration_cast<milliseconds>(host_end - host_start);
 
     // verification and output
 
     bool equal = std::abs(h_dot_product_GPU - h_dot_product_CPU) < 1e-6f;
+    cout << endl;
+    cout << "GPU computed values: " << h_dot_product_GPU << endl;
+    cout << "CPU computed values: " << h_dot_product_CPU << endl;
     cout << "did the two computations return the same values? "
         << boolalpha
         << equal
