@@ -39,12 +39,27 @@ void d_matrix_add(const float* h_A, const float* h_B, float* h_C_GPU, const int 
     CUDA_CHECK(cudaMalloc(&d_C, M*N*sizeof(float)) );
     CUDA_CHECK(cudaMemcpy(d_A, h_A, M*N*sizeof(float), cudaMemcpyHostToDevice) );
     CUDA_CHECK(cudaMemcpy(d_B, h_B, M*N*sizeof(float), cudaMemcpyHostToDevice) );
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
 
     int grid_dim_x = (M + block_dim_x - 1) / block_dim_x;
     int grid_dim_y = (N + block_dim_y - 1) / block_dim_y;
     dim3 block_dim(block_dim_x, block_dim_y, 1);
     dim3 grid_dim(grid_dim_x, grid_dim_y, 1);
+
+    cudaEventRecord(start, 0);      
     MatrixAdd<<<grid_dim, block_dim>>>(d_A, d_B, d_C, M, N);
+    CUDA_CHECK(cudaGetLastError());
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);         // wait for kernel completion
+    float ms = 0.0f;
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("Kernel time: %.3f ms\n", ms);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    CUDA_CHECK(cudaDeviceSynchronize()); 
 
     CUDA_CHECK(cudaMemcpy(h_C_GPU, d_C, M*N*sizeof(float), cudaMemcpyDeviceToHost) );
     CUDA_CHECK(cudaFree(d_A));
