@@ -14,6 +14,42 @@ __host__ __device__ int get_mat_ind(int i, int j, int n_columns){
 }
 
 __global__ void MatrixMul(const float* d_A, const float* d_B, float* d_C, const int M, const int N, const int P){
+    __shared__ float tile_A[block_dim_x * block_dim_y];
+    __shared__ float tile_B[block_dim_x * block_dim_y];
+    __shared__ float tile_C[block_dim_x * block_dim_y];
+
+    const int tile_index = get_mat_ind(threadIdx.x, threadIdx.y, gridDim.y); // constant index that corresponds to where this 
+                                                                             // thread is operating in shared memory
+    const int A_index_x = threadIdx.x + blockIdx.x * blockDim.x; // constant index that does not change as the tile moves
+    const int B_index_y = threadIdx.y + blockIdx.y * blockDim.y; // constant index that does not change as the tile moves
+    tile_C[tile_index] = 0;
+
+    // we code this assuming there are enough blocks (the grid is big enough) for tiles to cover all of C at launch.
+    int tile_index = 0; // tracks where our tiles on A and B are respectibely
+    while (tile_index < N){
+        const int A_index_x = threadIdx.x + blockIdx.x * blockDim.x; // constant index that does not change as the tile moves
+        int A_index_y = threadIdx.y + tile_index * blockDim.y;
+        int A_index = get_mat_ind(A_index_x, A_index_y, M * N);
+        int B_index_x = threadIdx.x + tile_index * blockDim.x;
+        int B_index = get_mat_ind(B_index_x, B_index_y, N * P);
+
+        // assining values to the (shared memory) tile depending on if we are in bound of the real matrices or not
+        if (A_index_x < M && A_index_y < N){
+            tile_A[tile_index] = d_A[A_index];
+        }
+        else{
+            tile_A[tile_index] = 0;
+        }
+        if (B_index_x < N && B_index_y < P){
+            tile_B[tile_index] = d_B[B_index];
+        }
+        else{
+            tile_B[tile_index] = 0;
+        }
+
+
+    }
+
 
 }
 void d_matrix_mul(const float* h_A, const float* h_B, float* h_C_GPU, const int M, const int N, const int P){
@@ -28,8 +64,8 @@ void d_matrix_mul(const float* h_A, const float* h_B, float* h_C_GPU, const int 
     CUDA_CHECK(cudaMemcpy(d_B, h_B, N*P*sizeof(float), cudaMemcpyHostToDevice) );
 
     // preparing dimensions for kernel launch
-    int grid_dim_x = min((M + block_dim_x - 1) / block_dim_x, 10000);
-    int grid_dim_y = min((N + block_dim_y - 1) / block_dim_y, 10000);
+    const int grid_dim_x = min((M + block_dim_x - 1) / block_dim_x, 10000);
+    const int grid_dim_y = min((N + block_dim_y - 1) / block_dim_y, 10000);
     dim3 grid_dim(grid_dim_x, grid_dim_y, 1);
     dim3 block_dim(block_dim_x, block_dim_y, 1);
 
