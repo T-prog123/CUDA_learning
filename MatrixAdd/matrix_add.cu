@@ -82,8 +82,8 @@ void h_matrix_add(float* A, float* B, float* C, int M, int N){
 
 int main(int argc, char** argv){
     // initialising the main (host-side) variables
-    int M = 10;
-    int N = 5;
+    int M = 10000;
+    int N = 5000;
     float* h_A = new float[M*N]; //shape (M, N)
     float* h_B = new float[M*N];
     float* h_C_CPU = new float[M*N]; 

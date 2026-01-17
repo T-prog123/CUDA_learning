@@ -15,8 +15,7 @@
     }                                                                        \
   } while (0)
 
-
-  void print_array(const float* x, const int N){
+void print_array(const float* x, const int N){
     for (int i=0; i<N; i++){
         std::cout << x[i] <<" ";
     }
