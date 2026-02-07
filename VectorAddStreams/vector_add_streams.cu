@@ -7,8 +7,8 @@
 using namespace std;
 using namespace std::chrono;
 
-// testing ssh-connection
-
+const int N_streams = 2;
+const int stream_size = 1000;
 
 // Kernel definition
 __global__ void VecAdd(const float* A, const float* B, float* C, const int N)
@@ -87,6 +87,10 @@ int main(int argc, char** argv)
     CUDA_CHECK(cudaMallocHost(&h_C, N * sizeof(float)) );
     CUDA_CHECK(cudaMallocHost(&h_C2, N * sizeof(float)) );
 
+    cudaStream_t stream_1, stream_2;
+    CUDA_CHECK(cudaStreamCreate(&stream_1));
+    CUDA_CHECK(cudaStreamCreate(&stream_2));
+
     // fill in the device variables:
     for (int i=0; i<N; i++){
         h_A[i] = float(i);
@@ -116,4 +120,6 @@ int main(int argc, char** argv)
     CUDA_CHECK(cudaFreeHost(h_B));
     CUDA_CHECK(cudaFreeHost(h_C));
     CUDA_CHECK(cudaFreeHost(h_C2));
+    CUDA_CHECK(cudaStreamDestroy(stream_1));
+    CUDA_CHECK(cudaStreamDestroy(stream_2));
 }
