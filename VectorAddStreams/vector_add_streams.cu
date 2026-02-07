@@ -43,8 +43,8 @@ void add_vector_device(const float* h_A, const float *h_B, float *h_C, const int
     CUDA_CHECK(cudaMalloc(&d_B, size));
     CUDA_CHECK(cudaMalloc(&d_C, size));
 
-    CUDA_CHECK(cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(d_A, h_A, size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(d_B, h_B, size, cudaMemcpyHostToDevice));
 
     // launching the krenel:
     dim3 grid_dimension(grid_size, 1, 1);
@@ -52,7 +52,9 @@ void add_vector_device(const float* h_A, const float *h_B, float *h_C, const int
     VecAdd<<<grid_dimension, block_dimension>>> (d_A, d_B, d_C, N);
     CUDA_CHECK(cudaGetLastError());
 
-    CUDA_CHECK(cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpyAsync(h_C, d_C, size, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaDeviceSynchronize());
+
 
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_B));
@@ -75,16 +77,20 @@ int main(int argc, char** argv)
         N = 1000; 
     }
 
-    // declare the host and device pointers
-    float *h_A = new float[N];
-    float *h_B = new float[N];
-    float *h_C = new float[N];
-    float *h_C2 = new float[N];
+    // declare the host pointers and reserving memory
+    float *h_A;
+    float *h_B;
+    float *h_C;
+    float *h_C2;
+    CUDA_CHECK(cudaMallocHost(&h_A, N * sizeof(float)) );
+    CUDA_CHECK(cudaMallocHost(&h_B, N * sizeof(float)) );
+    CUDA_CHECK(cudaMallocHost(&h_C, N * sizeof(float)) );
+    CUDA_CHECK(cudaMallocHost(&h_C2, N * sizeof(float)) );
 
     // fill in the device variables:
     for (int i=0; i<N; i++){
-        h_A[i] = i;
-        h_B[i] = 2 * i;
+        h_A[i] = float(i);
+        h_B[i] = float(2 * i);
     }
 
     auto d_start = high_resolution_clock::now();
@@ -105,9 +111,9 @@ int main(int argc, char** argv)
     cout << "Time for gpu operations: " << d_duration.count() << " milli seconds" << endl;
     cout << "Time for cpu operations: " << h_duration.count() << " milli seconds" << endl;
 
-    delete[] h_A;
-    delete[] h_B;
-    delete[] h_C;
-    delete[] h_C2;
-    
+
+    CUDA_CHECK(cudaFreeHost(h_A));
+    CUDA_CHECK(cudaFreeHost(h_B));
+    CUDA_CHECK(cudaFreeHost(h_C));
+    CUDA_CHECK(cudaFreeHost(h_C2));
 }
