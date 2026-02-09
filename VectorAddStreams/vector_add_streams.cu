@@ -3,12 +3,10 @@
 #include <chrono>
 #include <cstdlib>
 #include <algorithm>
+#include <cassert>
 #include "cuda_check.h"
 using namespace std;
 using namespace std::chrono;
-
-const int N_streams = 2;
-const int stream_size = 1000;
 
 // Kernel definition
 __global__ void VecAdd(const float* A, const float* B, float* C, const int N)
@@ -28,37 +26,57 @@ __global__ void VecAdd(const float* A, const float* B, float* C, const int N)
 }
 
 
-void add_vector_device(const float* h_A, const float *h_B, float *h_C, const int N){
+void add_vector_device(const float* h_A, const float *h_B, float *h_C, const int N, 
+    cudaStream_t stream_1, cudaStream_t stream_2, const int stream_size){
     const int block_size = 128;
-    const int grid_size = min(96, (N + block_size - 1)/block_size);
+    const int grid_size = min(96, (N + block_size - 1)/block_size); 
     cout << "block_size: " << block_size << endl;
     cout << "grid_size: " << grid_size << endl;
-    float* d_A;
-    float* d_B;
-    float* d_C;
+    float* d_A1;
+    float* d_B1;
+    float* d_C1;
+    float* d_A2;
+    float* d_B2;
+    float* d_C2;
 
-    size_t size =  N * sizeof(float);
+    size_t size =  stream_size * sizeof(float);
 
-    CUDA_CHECK(cudaMalloc(&d_A, size));
-    CUDA_CHECK(cudaMalloc(&d_B, size));
-    CUDA_CHECK(cudaMalloc(&d_C, size));
+    CUDA_CHECK(cudaMalloc(&d_A1, size));
+    CUDA_CHECK(cudaMalloc(&d_B1, size));
+    CUDA_CHECK(cudaMalloc(&d_C1, size));
+    CUDA_CHECK(cudaMalloc(&d_A2, size));
+    CUDA_CHECK(cudaMalloc(&d_B2, size));
+    CUDA_CHECK(cudaMalloc(&d_C2, size));
 
-    CUDA_CHECK(cudaMemcpyAsync(d_A, h_A, size, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpyAsync(d_B, h_B, size, cudaMemcpyHostToDevice));
+    // lauching the host-to-device, kernel, and device-to-host asynchronously with 2 streams
+    for (int i = 0; i < N; i += 2 * stream_size){    
+        // copying for host to device (engine 1)
+        CUDA_CHECK(cudaMemcpyAsync(d_A1, h_A + i, size, cudaMemcpyHostToDevice, stream_1));
+        CUDA_CHECK(cudaMemcpyAsync(d_B1, h_B + i, size, cudaMemcpyHostToDevice, stream_1));
+        CUDA_CHECK(cudaMemcpyAsync(d_A2, h_A + i + stream_size, size, cudaMemcpyHostToDevice, stream_2));
+        CUDA_CHECK(cudaMemcpyAsync(d_B2, h_B + i + stream_size, size, cudaMemcpyHostToDevice, stream_2));
 
-    // launching the krenel:
-    dim3 grid_dimension(grid_size, 1, 1);
-    dim3 block_dimension(block_size, 1, 1);
-    VecAdd<<<grid_dimension, block_dimension>>> (d_A, d_B, d_C, N);
-    CUDA_CHECK(cudaGetLastError());
+        // launching the kernel (engine 2):
+        dim3 grid_dimension(grid_size, 1, 1);
+        dim3 block_dimension(block_size, 1, 1);
+        VecAdd<<<grid_dimension, block_dimension, 0, stream_1>>> (d_A1, d_B1, d_C1, stream_size);
+        VecAdd<<<grid_dimension, block_dimension, 0, stream_2>>> (d_A2, d_B2, d_C2, stream_size);
+        CUDA_CHECK(cudaGetLastError());
 
-    CUDA_CHECK(cudaMemcpyAsync(h_C, d_C, size, cudaMemcpyDeviceToHost));
+        // copying from device to host (engine 3)
+        CUDA_CHECK(cudaMemcpyAsync(h_C + i, d_C1, size, cudaMemcpyDeviceToHost, stream_1));
+        CUDA_CHECK(cudaMemcpyAsync(h_C + i + stream_size, d_C2, size, cudaMemcpyDeviceToHost, stream_2));
+    }
     CUDA_CHECK(cudaDeviceSynchronize());
 
 
-    CUDA_CHECK(cudaFree(d_A));
-    CUDA_CHECK(cudaFree(d_B));
-    CUDA_CHECK(cudaFree(d_C));
+
+    CUDA_CHECK(cudaFree(d_A1));
+    CUDA_CHECK(cudaFree(d_B1));
+    CUDA_CHECK(cudaFree(d_C1));
+    CUDA_CHECK(cudaFree(d_A2));
+    CUDA_CHECK(cudaFree(d_B2));
+    CUDA_CHECK(cudaFree(d_C2));
 
 }
 
@@ -74,8 +92,10 @@ int main(int argc, char** argv)
     if (argc > 1) {
         N = static_cast<int>(atof(argv[1]));
     } else {
-        N = 1000; 
+        N = 100000000; 
     }
+    const int stream_size = N / 10;
+    assert(N % stream_size == 0);
 
     // declare the host pointers and reserving memory
     float *h_A;
@@ -98,7 +118,7 @@ int main(int argc, char** argv)
     }
 
     auto d_start = high_resolution_clock::now();
-    add_vector_device(h_A, h_B, h_C, N);
+    add_vector_device(h_A, h_B, h_C, N, stream_1, stream_2, stream_size);
     auto d_end = high_resolution_clock::now();
     auto d_duration = duration_cast<milliseconds>(d_end - d_start);
     //print_array(h_C, N);
