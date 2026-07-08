@@ -2,3 +2,10 @@
 *.lib
 *.exp
 *.obj
+
+# Nsight Compute / Nsight Systems reports
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+*.sqlite
+repport/ncu_repport/

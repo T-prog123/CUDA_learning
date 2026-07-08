@@ -17,9 +17,9 @@ using namespace std::chrono;
   #define DPRINTF(...) do {} while (0)
 #endif
 
-const int block_dim_x = 4;
-const int block_dim_y = 4;
-const int shared_tile_dim = 4;
+const int block_dim_x = 16;
+const int block_dim_y = 16;
+const int shared_tile_dim = 16;
 
 //#define get_matrix_index(i, j, width)((j) + (i)*(width))
 __host__ __device__ int get_mat_ind(int i, int j, int n_columns){
@@ -90,7 +90,7 @@ __global__ void MatrixMul_inner_product(const float* d_A, const float* d_B, floa
     // DPRINTF("When writting at the end, we access index %d, %f we are writting value\n", get_mat_ind(A_index_x, B_index_y, P), thread_value);
 }
 
-void d_matrix_mul(const float* h_A, const float* h_B, float* h_C_GPU, const int M, const int N, const int P){
+void d_matrix_mul(const float* h_A, const float* h_B, const int M, const int N, const int P){
     // setting the variables and the memory transfers up
     float *d_A;
     float *d_B;
@@ -126,40 +126,18 @@ void d_matrix_mul(const float* h_A, const float* h_B, float* h_C_GPU, const int 
     cudaEventDestroy(stop);
     CUDA_CHECK(cudaDeviceSynchronize()); 
 
-    CUDA_CHECK(cudaMemcpy(h_C_GPU, d_C, M*P*sizeof(float), cudaMemcpyDeviceToHost) );
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_B));
     CUDA_CHECK(cudaFree(d_C));
 }
 
-void h_matrix_mul(float* A, float* B, float* C, int M, int N, int P){
-    // A of shape (M, N)
-    // B of shape (N, P)
-    // logically, C of shape (M, P)
-    for (int i=0; i < M; i++){
-        for(int j=0; j < P; j++){
-            double s = 0;
-            for (int k=0; k<N; k++){
-                int A_index = get_mat_ind(i, k, N);
-                int B_index = get_mat_ind(k, j, P);
-                s += (double)A[A_index] * (double)B[B_index];
-            }
-            int C_index = get_mat_ind(i, j, P);
-            C[C_index] = (float)s;
-        }
-    }
-}
-
-
 int main(int argc, char** argv){
     // initialising the main (host-side) variables
-    int M = 100;
-    int N = 5000;
-    int P = 200;
+    int M = 4096;
+    int N = 4096;
+    int P = 4096;
     float* h_A = new float[M*N]; //shape (M, N)
     float* h_B = new float[N*P]; //shape (N, P)
-    float* h_C_CPU = new float[M*P]; //shape (M, P)
-    float* h_C_GPU = new float[M*P]; //shape (M, P)
     for (int k=0; k<N; k++){
         for (int i=0; i<M; i++){
             h_A[get_mat_ind(i, k, N)] = (i + k) % 20;
@@ -170,25 +148,13 @@ int main(int argc, char** argv){
         }
     }
 
-    // running and timing the CPU-side computations
-    auto host_start = high_resolution_clock::now();
-    h_matrix_mul(h_A, h_B, h_C_CPU, M, N, P);
-    auto host_end = high_resolution_clock::now();
-    auto host_duration = duration_cast<milliseconds>(host_end - host_start);
-    cout << "Time for cpu operations: " << host_duration.count() << " milli seconds" << endl;
-
     // running and timing the GPU-side computations
     auto device_start = high_resolution_clock::now();
-    d_matrix_mul(h_A, h_B, h_C_GPU, M, N, P);
+    d_matrix_mul(h_A, h_B, M, N, P);
     auto device_end = high_resolution_clock::now();
     auto device_duration = duration_cast<milliseconds>(device_end - device_start);
     cout << "Time for GPU operations: " << device_duration.count() << " milli seconds" << endl;
-    cout << "did the two computations return the same values? " << boolalpha  << equal(h_C_CPU, h_C_CPU + M*P, h_C_GPU) <<endl;
-    // print_array(h_C_CPU, M*P);
-    // print_array(h_C_GPU, M*P);
     delete[] h_A;
     delete[] h_B;
-    delete[] h_C_CPU;
-    delete[] h_C_GPU;
     return 0;
 }
