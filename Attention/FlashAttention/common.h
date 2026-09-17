@@ -2,14 +2,14 @@
 #include <vector>
 #include <tuple>
 
-using MatrixTuple = std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>>;
+using MatrixTuple = std::tuple<std::vector<float>, std::vector<float>, std::vector<float>, std::vector<float>>;
 
 MatrixTuple matrix_init(const int N, const int d) {
     int total_size = N * d;
-    std::vector<int> h_Q(total_size);
-    std::vector<int> h_K(total_size);
-    std::vector<int> h_V(total_size);
-    std::vector<int> h_O(total_size);
+    std::vector<float> h_Q(total_size);
+    std::vector<float> h_K(total_size);
+    std::vector<float> h_V(total_size);
+    std::vector<float> h_O(total_size);
 
     for (int i = 0; i < total_size; ++i) {
         h_Q[i] = i % 20;
